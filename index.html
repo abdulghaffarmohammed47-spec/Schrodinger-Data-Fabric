@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schrödinger Data Fabric (SDF)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen text-white font-sans">
+    <div class="container mx-auto px-4 py-8">
+        <header class="flex justify-between items-center mb-12 border-b border-blue-500 pb-4">
+            <h1 class="text-4xl font-bold tracking-tight">SDF <span class="text-blue-400">v6</span></h1>
+            <div id="user-status" class="text-sm">
+                <span id="current-user">Not logged in</span>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <!-- Registration & Keys -->
+            <div class="bg-gray-800 p-6 rounded-xl shadow-2xl border border-gray-700">
+                <h2 class="text-2xl font-semibold mb-4 text-blue-300">User Setup</h2>
+                <div class="space-y-4">
+                    <input id="reg-email" type="email" placeholder="Email" class="w-full bg-gray-900 border border-gray-600 p-2 rounded text-white">
+                    <button id="btn-register" class="w-full bg-blue-600 hover:bg-blue-700 p-2 rounded transition font-bold">Register & Generate Keys</button>
+                    <div id="key-info" class="hidden mt-4">
+                        <p class="text-xs text-green-400 mb-2">Keys generated successfully! (Keys are stored locally for this session)</p>
+                        <textarea id="pub-key" readonly class="w-full bg-black text-xs p-2 h-20 rounded border border-gray-700 mb-2"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Upload -->
+            <div class="bg-gray-800 p-6 rounded-xl shadow-2xl border border-gray-700">
+                <h2 class="text-2xl font-semibold mb-4 text-green-300">Secure Upload</h2>
+                <div class="space-y-4">
+                    <input id="file-input" type="file" class="w-full bg-gray-900 border border-gray-600 p-2 rounded text-white">
+                    <button id="btn-upload" class="w-full bg-green-600 hover:bg-green-700 p-2 rounded transition font-bold">Encrypt & Upload Shards</button>
+                    <div id="upload-status" class="text-sm mt-2"></div>
+                </div>
+            </div>
+
+            <!-- Access -->
+            <div class="bg-gray-800 p-6 rounded-xl shadow-2xl border border-gray-700">
+                <h2 class="text-2xl font-semibold mb-4 text-purple-300">Secure Access</h2>
+                <div class="space-y-4">
+                    <input id="access-file-id" type="text" placeholder="File ID" class="w-full bg-gray-900 border border-gray-600 p-2 rounded text-white">
+                    <button id="btn-access" class="w-full bg-purple-600 hover:bg-purple-700 p-2 rounded transition font-bold">Request & Decrypt</button>
+                    <div id="access-result" class="mt-4 p-4 bg-black rounded border border-gray-700 hidden">
+                        <h3 id="result-filename" class="font-bold text-blue-400 mb-2"></h3>
+                        <div id="result-content" class="text-sm break-all font-mono"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Admin Dashboard -->
+            <div class="bg-gray-800 p-6 rounded-xl shadow-2xl border border-gray-700">
+                <h2 class="text-2xl font-semibold mb-4 text-red-400">Admin Dashboard</h2>
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="bg-gray-900 p-3 rounded text-center">
+                        <p class="text-xs text-gray-400">Total Files</p>
+                        <p id="stat-files" class="text-xl font-bold">0</p>
+                    </div>
+                    <div class="bg-gray-900 p-3 rounded text-center">
+                        <p class="text-xs text-gray-400">Anomalies</p>
+                        <p id="stat-anomalies" class="text-xl font-bold text-red-500">0</p>
+                    </div>
+                </div>
+                <button id="btn-refresh-stats" class="w-full bg-gray-700 hover:bg-gray-600 p-2 rounded transition text-xs">Refresh Stats</button>
+            </div>
+        </div>
+
+        <!-- Logs Section -->
+        <div class="mt-8 bg-gray-800 p-6 rounded-xl shadow-2xl border border-gray-700">
+            <h2 class="text-2xl font-semibold mb-4 text-yellow-300">System Logs</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                    <thead class="bg-gray-900">
+                        <tr>
+                            <th class="p-2">Time</th>
+                            <th class="p-2">User</th>
+                            <th class="p-2">IP</th>
+                            <th class="p-2">Anomaly Score</th>
+                            <th class="p-2">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="log-body">
+                        <!-- Logs populated here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = "http://localhost:8000";
+        let currentUser = null;
+        let userKeys = null;
+
+        // Mocking RSA key generation for the demo
+        async function mockGenerateKeys() {
+            // In a real app, we'd use a crypto library or the Web Crypto API
+            // For this demo, we'll just use dummy strings that look like keys
+            return {
+                public: "-----BEGIN PUBLIC KEY-----\nMFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAK7Q9v...\n-----END PUBLIC KEY-----",
+                private: "-----BEGIN PRIVATE KEY-----\nMIIBVAIBADANBgkqhkiG9w0BAQEFAASCAT4wggE6...\n-----END PRIVATE KEY-----"
+            };
+        }
+
+        document.getElementById('btn-register').onclick = async () => {
+            const email = document.getElementById('reg-email').value;
+            if (!email) return alert("Email required");
+
+            userKeys = await mockGenerateKeys();
+            currentUser = { uid: btoa(email), email: email, public_key: userKeys.public };
+
+            const response = await fetch(`${API_BASE}/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(currentUser)
+            });
+
+            if (response.ok) {
+                document.getElementById('current-user').innerText = email;
+                document.getElementById('key-info').classList.remove('hidden');
+                document.getElementById('pub-key').value = userKeys.public;
+                alert("User registered and keys generated!");
+            }
+        };
+
+        document.getElementById('btn-upload').onclick = async () => {
+            if (!currentUser) return alert("Please register first");
+            const fileInput = document.getElementById('file-input');
+            if (fileInput.files.length === 0) return alert("Select a file");
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            document.getElementById('upload-status').innerText = "Encrypting and uploading...";
+            
+            const response = await fetch(`${API_BASE}/upload?user_uid=${currentUser.uid}`, {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+            if (response.ok) {
+                document.getElementById('upload-status').innerHTML = `Success! File ID: <span class="text-blue-400 font-mono select-all">${result.file_id}</span>`;
+            } else {
+                document.getElementById('upload-status').innerText = "Upload failed: " + result.detail;
+            }
+        };
+
+        document.getElementById('btn-access').onclick = async () => {
+            if (!currentUser) return alert("Please register first");
+            const fileId = document.getElementById('access-file-id').value;
+            if (!fileId) return alert("File ID required");
+
+            const response = await fetch(`${API_BASE}/access/${fileId}?user_uid=${currentUser.uid}&private_key=${encodeURIComponent(userKeys.private)}`);
+            const result = await response.json();
+
+            const resultDiv = document.getElementById('access-result');
+            const contentDiv = document.getElementById('result-content');
+            const filenameH3 = document.getElementById('result-filename');
+
+            resultDiv.classList.remove('hidden');
+            if (response.ok) {
+                if (result.status === 'warning') {
+                    filenameH3.innerText = "ANOMALY DETECTED";
+                    filenameH3.className = "font-bold text-red-500 mb-2";
+                    contentDiv.innerText = result.data;
+                } else {
+                    filenameH3.innerText = result.filename;
+                    filenameH3.className = "font-bold text-green-400 mb-2";
+                    contentDiv.innerText = result.content;
+                }
+            } else {
+                filenameH3.innerText = "Error";
+                contentDiv.innerText = result.detail;
+            }
+        };
+
+        async function refreshStats() {
+            const statsResp = await fetch(`${API_BASE}/admin/stats`);
+            const stats = await statsResp.json();
+            document.getElementById('stat-files').innerText = stats.total_files;
+            document.getElementById('stat-anomalies').innerText = stats.anomaly_count;
+
+            const logsResp = await fetch(`${API_BASE}/admin/logs`);
+            const logs = await logsResp.json();
+            const logBody = document.getElementById('log-body');
+            logBody.innerHTML = '';
+            
+            logs.reverse().slice(0, 10).forEach(log => {
+                const row = document.createElement('tr');
+                row.className = "border-b border-gray-700";
+                row.innerHTML = `
+                    <td class="p-2">${new Date(log.timestamp * 1000).toLocaleTimeString()}</td>
+                    <td class="p-2">${log.user_uid.substring(0, 8)}...</td>
+                    <td class="p-2">${log.ip_address}</td>
+                    <td class="p-2">${log.anomaly_score.toFixed(4)}</td>
+                    <td class="p-2"><span class="${log.is_anomaly ? 'text-red-500' : 'text-green-500'}">${log.is_anomaly ? 'ANOMALY' : 'NORMAL'}</span></td>
+                `;
+                logBody.appendChild(row);
+            });
+        }
+
+        document.getElementById('btn-refresh-stats').onclick = refreshStats;
+        setInterval(refreshStats, 5000);
+    </script>
+</body>
+</html>

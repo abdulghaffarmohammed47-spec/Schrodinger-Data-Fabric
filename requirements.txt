@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pycryptodome
+scikit-learn
+pandas
+numpy
+firebase-admin
+requests
+python-dotenv
